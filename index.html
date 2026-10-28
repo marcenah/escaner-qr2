@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Escáner QR</title>
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <style>
+    body { background: #0f172a; color: white; font-family: sans-serif; padding: 15px; max-width: 400px; margin: 0 auto; }
+    input, button { width: 100%; padding: 12px; margin-top: 10px; border-radius: 8px; border: none; font-size: 16px; box-sizing: border-box; }
+    input { background: #1e293b; color: white; border: 1px solid #334155; }
+    button { background: #3b82f6; color: white; font-weight: bold; cursor: pointer; }
+    #reader { margin-top: 15px; border-radius: 10px; overflow: hidden; background: #000; }
+    .status { padding: 15px; margin-top: 15px; border-radius: 8px; text-align: center; background: #1e293b; font-weight: bold; }
+    .success { background: #064e3b; color: #34d399; }
+    .error { background: #7f1d1d; color: #fca5a5; }
+  </style>
+</head>
+<body>
+
+  <h2>📸 Escáner de Asistencia</h2>
+  
+  <label>Pega aquí el enlace de tu Robot:</label>
+  <input type="url" id="gas-url" placeholder="https://script.google.com/.../exec">
+  
+  <button id="btn-cam" onclick="iniciarCamara()">Iniciar Cámara</button>
+  
+  <div id="reader"></div>
+  <div id="status" class="status">Esperando...</div>
+
+  <script>
+    let html5QrCode = null;
+    let escaneando = false;
+
+    // Guardar el enlace para no tener que pegarlo cada vez
+    window.onload = () => {
+      const guardado = localStorage.getItem("miRobotUrl");
+      if (guardado) document.getElementById('gas-url').value = guardado;
+    };
+
+    function iniciarCamara() {
+      const url = document.getElementById('gas-url').value.trim();
+      if (!url) { alert("¡Primero pega el enlace de tu robot!"); return; }
+      localStorage.setItem("miRobotUrl", url); // Lo guarda en la memoria del celular
+
+      if (!html5QrCode) html5QrCode = new Html5Qrcode("reader");
+
+      document.getElementById('status').innerText = "Apuntando...";
+      html5QrCode.start(
+        { facingMode: "environment" }, // Usa la cámara de atrás
+        { fps: 10, qrbox: { width: 250, height: 250 } },
+        (textoQr) => enviarAlRobot(textoQr)
+      ).catch(err => alert("Da permiso a la cámara."));
+    }
+
+    async function enviarAlRobot(textoQr) {
+      if (escaneando) return; // Evita mandar 2 veces seguidas muy rápido
+      escaneando = true;
+      
+      document.getElementById('status').innerText = "Enviando...";
+      document.getElementById('status').className = "status";
+      const urlRobot = document.getElementById('gas-url').value;
+
+      // Intentamos sacar solo el ID (lo que está antes del palito '|')
+      const idAlumno = textoQr.split('|')[0].trim();
+
+      try {
+        const respuesta = await fetch(urlRobot, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ id_alumno: idAlumno })
+        });
+        
+        const resultado = await respuesta.json();
+        
+        if (resultado.status === 'success') {
+          document.getElementById('status').innerText = "✅ ¡" + resultado.alumno.nombre + " guardado!";
+          document.getElementById('status').className = "status success";
+          navigator.vibrate(200); // Hace vibrar el celular
+        } else {
+          document.getElementById('status').innerText = "❌ " + resultado.message;
+          document.getElementById('status').className = "status error";
+        }
+      } catch (error) {
+        document.getElementById('status').innerText = "Error de internet";
+      }
+
+      setTimeout(() => { escaneando = false; }, 2000); // Espera 2 segundos antes de leer el siguiente
+    }
+  </script>
+</body>
+</html>
